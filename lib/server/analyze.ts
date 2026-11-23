@@ -7,8 +7,11 @@ const GEMINI = "https://generativelanguage.googleapis.com";
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 // 이 크기 이하는 요청에 직접 담아 보내고, 넘으면 임시 업로드(Files API)를 써요
 const INLINE_LIMIT_BYTES = 15 * 1024 * 1024;
+// 1차(기본 모델)가 실패하면 다른 모델로 한 번 더 분석해요. 비워 두면 대체 없이 1차만 써요.
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? "gemini-3.5-flash-lite";
 // 화면 제한(60초)보다 조금 먼저 끊어서 "지연" 안내를 보여 줘요
-const AI_TIMEOUT_MS = 55_000;
+const TOTAL_TIMEOUT_MS = 55_000; // 1차+2차를 합친 AI 분석 시간
+const PRIMARY_TIMEOUT_MS = 35_000; // 1차에 쓰는 시간 (남은 시간은 2차가 써요)
 
 const SYSTEM_PROMPT = `당신은 운동 자세를 봐 주는 친절한 AI 트레이너입니다. 사용자가 올린 운동 영상만 근거로 자세를 분석합니다.
 
@@ -100,6 +103,29 @@ async function deleteFromGemini(apiKey: string, name: string) {
   }).catch(() => undefined);
 }
 
+function isTimeout(e: unknown) {
+  return e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+}
+
+/** 지정한 모델에 영상 분석을 요청해요 (한 번의 호출) */
+function callModel(apiKey: string, model: string, videoPart: Record<string, unknown>, timeoutMs: number) {
+  return fetch(`${GEMINI}/v1beta/models/${model}:generateContent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    signal: AbortSignal.timeout(timeoutMs),
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [
+        { role: "user", parts: [videoPart, { text: "이 운동 영상의 자세를 분석해 주세요." }] },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+      },
+    }),
+  });
+}
+
 function failure(status: number, message: string, retryable = true): AnalyzeOutcome {
   return { ok: false, status, message, retryable };
 }
@@ -118,23 +144,30 @@ export async function analyzeVideo(apiKey: string, file: File): Promise<AnalyzeO
       videoPart = { file_data: { mime_type: file.type, file_uri: uploaded.uri } };
     }
 
-    const upstream = await fetch(`${GEMINI}/v1beta/models/${MODEL}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [
-          { role: "user", parts: [videoPart, { text: "이 운동 영상의 자세를 분석해 주세요." }] },
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
-        },
-      }),
-    });
+    // 1차: 기본 모델로 분석해요
+    const startedAt = Date.now();
+    let model = MODEL;
+    let upstream: Response | null = null;
+    let data: { error?: { message?: string }; candidates?: { content?: { parts?: unknown } }[] } | null = null;
+    try {
+      upstream = await callModel(apiKey, model, videoPart, PRIMARY_TIMEOUT_MS);
+      data = await upstream.json().catch(() => null);
+    } catch (e) {
+      // 시간 초과·연결 실패는 아래에서 대체 모델로 다시 시도해요
+      if (!isTimeout(e) && !(e instanceof TypeError)) throw e;
+    }
 
-    const data = await upstream.json().catch(() => null);
+    // 2차: 1차가 서버 사정(한도·바쁨·시간 초과)으로 실패하면 다른 모델로 한 번 더 시도해요
+    const needFallback = !upstream || upstream.status === 429 || upstream.status >= 500;
+    if (needFallback && FALLBACK_MODEL && FALLBACK_MODEL !== MODEL) {
+      const remaining = TOTAL_TIMEOUT_MS - (Date.now() - startedAt);
+      if (remaining > 5_000) {
+        model = FALLBACK_MODEL;
+        upstream = await callModel(apiKey, model, videoPart, remaining);
+        data = await upstream.json().catch(() => null);
+      }
+    }
+    if (!upstream) return failure(504, MESSAGES.timeout);
 
     if (!upstream.ok) {
       // 키가 담길 수 있는 원문 오류는 돌려주지 않고, 원인만 쉬운 말로 알려줘요
@@ -142,7 +175,7 @@ export async function analyzeVideo(apiKey: string, file: File): Promise<AnalyzeO
       if (code === 401 || code === 403 || /API key/i.test(data?.error?.message ?? ""))
         return failure(502, "Gemini 키가 올바르지 않아요. .env의 GEMINI_API_KEY 값을 확인해 주세요.", false);
       if (code === 404)
-        return failure(502, `분석 모델(${MODEL})을 사용할 수 없어요. 다른 모델로 바꿔 주세요.`, false);
+        return failure(502, `분석 모델(${model})을 사용할 수 없어요. 다른 모델로 바꿔 주세요.`, false);
       if (code === 429)
         return failure(502, "요청이 너무 많거나 사용 한도를 넘었어요. 잠시 후 다시 시도해 주세요.");
       if (code === 503) return failure(502, "AI 서버가 바빠요. 잠시 후 다시 시도해 주세요.");
@@ -161,7 +194,7 @@ export async function analyzeVideo(apiKey: string, file: File): Promise<AnalyzeO
     }
   } catch (e) {
     // 시간이 너무 오래 걸려 끊긴 경우
-    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+    if (isTimeout(e)) {
       return failure(504, MESSAGES.timeout);
     }
     return failure(502, "영상을 분석하는 중에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.");
