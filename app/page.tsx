@@ -19,9 +19,10 @@ export default function Home() {
       <footer className="mt-auto flex flex-col gap-1 border-t border-line pt-6 text-center text-xs text-muted">
         <p>이 서비스는 의료 서비스가 아니며, 통증이 있으면 전문의/PT 전문가 상담을 권장합니다.</p>
         <p>
-          본 서비스는 Google Gemini API를 사용합니다. 올린 영상은 분석을 위해 Google로
-          전송되며, 데이터 처리는 Google의 API 이용 약관을 따릅니다. 영상은 분석하는
-          동안에만 임시로 처리되고 분석이 끝나면 바로 삭제되며, 이 서비스는 영상을 보관하지 않습니다.
+          본 서비스는 Google Gemini API(무료 이용 구간)를 사용합니다. 올린 영상은 분석을 위해
+          Google로 전송되며, 이 구간에서는 Google이 전송된 내용을 서비스 개선에 사용하고 사람이
+          검토할 수 있습니다. 이 서비스는 영상을 분석하는 동안에만 임시로 처리하고 분석이 끝나면
+          바로 삭제하며, 보관하지 않습니다.
         </p>
       </footer>
     </main>
