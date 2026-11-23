@@ -59,8 +59,12 @@ export default function ResultView({
           <span className="w-fit self-center rounded-full bg-surface-2 px-3 py-1 text-xs text-muted sm:self-start">
             {result.exercise}
           </span>
-          <h2 className="text-xl font-bold">종합 자세 점수</h2>
+          {/* 자세가 완벽하면 칭찬 문구를 보여 줘요 */}
+          <h2 className="text-xl font-bold">
+            {result.excellent ? "훌륭한 자세입니다! ✨" : "종합 자세 점수"}
+          </h2>
           {result.summary && <p className="text-muted">{result.summary}</p>}
+          <p className="text-xs text-muted">이 점수는 AI의 종합 판단입니다.</p>
         </div>
       </section>
 
@@ -74,7 +78,9 @@ export default function ResultView({
       )}
 
       <section aria-label="교정 피드백" className="flex flex-col gap-3">
-        <h2 className="font-bold">이렇게 개선해 보세요</h2>
+        <h2 className="font-bold">
+          {result.excellent ? "유지해야 할 포인트" : "이렇게 개선해 보세요"}
+        </h2>
         <ol className="flex flex-col gap-3">
           {result.feedback.map((item, i) => (
             <li

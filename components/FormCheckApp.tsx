@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
+  CLIENT_TIMEOUT_MS,
   MAX_VIDEO_BYTES,
   MAX_VIDEO_SECONDS,
   MESSAGES,
   isAllowedVideo,
 } from "@/lib/limits";
-import type { AnalysisResult } from "@/lib/types";
+import type { AnalysisResult, ApiError } from "@/lib/types";
 import AnalyzingLoader from "./AnalyzingLoader";
 import ConsentCheck from "./ConsentCheck";
+import NoticeCard from "./NoticeCard";
 import ResultView from "./ResultView";
 import UploadZone from "./UploadZone";
 
@@ -18,6 +20,8 @@ type Step =
   | { name: "ready"; file: File; url: string }
   | { name: "analyzing"; url: string }
   | { name: "done"; result: AnalysisResult; url: string };
+
+type ErrorState = { message: string; retryable: boolean };
 
 // 브라우저에서 영상 길이를 재요
 function readDuration(url: string): Promise<number> {
@@ -32,7 +36,7 @@ function readDuration(url: string): Promise<number> {
 
 export default function FormCheckApp() {
   const [step, setStep] = useState<Step>({ name: "idle" });
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
   const [consent, setConsent] = useState(false);
 
   // 미리보기 주소는 화면이 바뀔 때 정리해요
@@ -47,7 +51,7 @@ export default function FormCheckApp() {
   async function handleFile(file: File) {
     setError(null);
     if (!isAllowedVideo(file.name, file.type) || file.size > MAX_VIDEO_BYTES) {
-      setError(MESSAGES.fileLimit);
+      setError({ message: MESSAGES.fileLimit, retryable: false });
       return;
     }
     const url = URL.createObjectURL(file);
@@ -55,33 +59,55 @@ export default function FormCheckApp() {
       const seconds = await readDuration(url);
       if (seconds > MAX_VIDEO_SECONDS) {
         URL.revokeObjectURL(url);
-        setError(MESSAGES.fileLimit);
+        setError({ message: MESSAGES.fileLimit, retryable: false });
         return;
       }
     } catch {
       URL.revokeObjectURL(url);
-      setError(MESSAGES.fileLimit);
+      setError({ message: MESSAGES.fileLimit, retryable: false });
       return;
     }
     setConsent(false);
     setStep({ name: "ready", file, url });
   }
 
+  // 서버에 영상을 보내 분석해요. 30초가 넘으면 지연 안내와 [재시도]를 보여 줘요.
   async function analyze() {
     if (step.name !== "ready" || !consent) return;
     const { file, url } = step;
     setError(null);
     setStep({ name: "analyzing", url });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
     try {
       const body = new FormData();
       body.append("video", file);
-      const res = await fetch("/api/analyze", { method: "POST", body });
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        body,
+        signal: controller.signal,
+      });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "분석에 실패했어요.");
+      if (!res.ok) {
+        const e = data as Partial<ApiError>;
+        setError({
+          message: e.error || "분석에 실패했어요.",
+          retryable: e.retryable ?? false,
+        });
+        setStep({ name: "ready", file, url });
+        return;
+      }
       setStep({ name: "done", result: data as AnalysisResult, url });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "알 수 없는 오류가 났어요.");
+      const timedOut = e instanceof DOMException && e.name === "AbortError";
+      setError({
+        message: timedOut ? MESSAGES.timeout : "알 수 없는 오류가 났어요. 다시 시도해 주세요.",
+        retryable: true,
+      });
       setStep({ name: "ready", file, url });
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -93,12 +119,22 @@ export default function FormCheckApp() {
   return (
     <div className="flex flex-col gap-5">
       {error && (
-        <p
+        <div
           role="alert"
-          className="rounded-2xl border border-bad/50 bg-bad/10 px-5 py-4 text-sm text-bad"
+          className="flex flex-col items-center gap-3 rounded-2xl border border-bad/50 bg-bad/10 px-5 py-4 text-center text-sm text-bad"
         >
-          {error}
-        </p>
+          <p>{error.message}</p>
+          {/* 다시 시도하면 되는 오류일 때만 [재시도] 버튼을 보여 줘요 */}
+          {error.retryable && step.name === "ready" && (
+            <button
+              type="button"
+              onClick={analyze}
+              className="rounded-full bg-bad px-5 py-2 font-bold text-white transition hover:brightness-110"
+            >
+              재시도
+            </button>
+          )}
+        </div>
       )}
 
       {step.name === "idle" && (
@@ -151,16 +187,7 @@ export default function FormCheckApp() {
         (step.result.status === "ok" ? (
           <ResultView result={step.result} onReset={reset} />
         ) : (
-          <div className="flex flex-col items-center gap-4 rounded-3xl border border-warn/50 bg-warn/10 px-6 py-10 text-center">
-            <p className="text-lg font-bold text-warn">{step.result.message}</p>
-            <button
-              type="button"
-              onClick={reset}
-              className="rounded-full bg-accent px-8 py-3 font-bold text-white transition hover:brightness-110"
-            >
-              다시 올리기
-            </button>
-          </div>
+          <NoticeCard message={step.result.message} onReset={reset} />
         ))}
     </div>
   );
