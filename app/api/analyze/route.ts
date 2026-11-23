@@ -7,7 +7,7 @@ import type { ApiError } from "@/lib/types";
 // 이 파일은 "화면 뒤(서버)"에서만 실행돼요. 받기 → 검사 → 분석 → 안전 처리 → 응답만 맡아요.
 // API 키는 .env에서 여기서만 읽고, 브라우저로는 절대 보내지 않아요.
 
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 function fail(error: string, status: number, retryable = false) {
   const body: ApiError = { error, retryable };

@@ -7,8 +7,8 @@ const GEMINI = "https://generativelanguage.googleapis.com";
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 // 이 크기 이하는 요청에 직접 담아 보내고, 넘으면 임시 업로드(Files API)를 써요
 const INLINE_LIMIT_BYTES = 15 * 1024 * 1024;
-// 30초 목표보다 조금 먼저 끊어서 "지연" 안내를 보여 줘요
-const AI_TIMEOUT_MS = 28_000;
+// 화면 제한(60초)보다 조금 먼저 끊어서 "지연" 안내를 보여 줘요
+const AI_TIMEOUT_MS = 55_000;
 
 const SYSTEM_PROMPT = `당신은 운동 자세를 봐 주는 친절한 AI 트레이너입니다. 사용자가 올린 운동 영상만 근거로 자세를 분석합니다.
 

@@ -11,7 +11,7 @@ export const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov"];
 export const MAX_DAILY_ANALYSES = 5;
 
 // AI 응답을 기다리는 최대 시간 (밀리초)
-export const CLIENT_TIMEOUT_MS = 30_000;
+export const CLIENT_TIMEOUT_MS = 60_000;
 
 // PRD 4번 "예외 상황과 화면 처리"에 적힌 안내 문구
 export const MESSAGES = {

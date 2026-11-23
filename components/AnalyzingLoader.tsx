@@ -68,7 +68,7 @@ export default function AnalyzingLoader() {
         ))}
       </svg>
       <p className="text-lg font-bold">{MESSAGES[index]}</p>
-      <p className="text-sm text-muted">보통 30초 안에 끝나요. 이 화면을 닫지 말아 주세요.</p>
+      <p className="text-sm text-muted">보통 1분 안에 끝나요. 이 화면을 닫지 말아 주세요.</p>
     </div>
   );
 }

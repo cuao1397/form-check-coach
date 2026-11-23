@@ -71,7 +71,7 @@ export default function FormCheckApp() {
     setStep({ name: "ready", file, url });
   }
 
-  // 서버에 영상을 보내 분석해요. 30초가 넘으면 지연 안내와 [재시도]를 보여 줘요.
+  // 서버에 영상을 보내 분석해요. 60초가 넘으면 지연 안내와 [재시도]를 보여 줘요.
   async function analyze() {
     if (step.name !== "ready" || !consent) return;
     const { file, url } = step;
