@@ -1,6 +1,6 @@
 import { MAX_VIDEO_BYTES, MAX_VIDEO_MB, MESSAGES, isAllowedVideo } from "@/lib/limits";
 import { analyzeVideo } from "@/lib/server/analyze";
-import { clientId, takeSlot } from "@/lib/server/rateLimit";
+import { clientId, releaseSlot, takeSlot } from "@/lib/server/rateLimit";
 import { applySafetyRules } from "@/lib/server/safety";
 import type { ApiError } from "@/lib/types";
 
@@ -24,10 +24,17 @@ export async function POST(request: Request) {
   }
 
   let file: FormDataEntryValue | null;
+  let consent: FormDataEntryValue | null;
   try {
-    file = (await request.formData()).get("video");
+    const form = await request.formData();
+    file = form.get("video");
+    consent = form.get("consent");
   } catch {
     return fail("요청 형식이 올바르지 않아요.", 400);
+  }
+  // 동의 없이는 분석하지 않아요 (화면에서도 막지만 서버가 다시 확인해요)
+  if (consent !== "true") {
+    return fail("영상 전송에 동의해야 분석할 수 있어요.", 400);
   }
   if (!(file instanceof File) || file.size === 0) {
     return fail("분석할 영상을 올려 주세요.", 400);
@@ -40,8 +47,9 @@ export async function POST(request: Request) {
     return fail(`영상 용량은 ${MAX_VIDEO_MB}MB 이하만 지원해요.`, 400);
   }
 
-  // 하루 5회 제한 (AI 사용 비용 보호)
-  if (!takeSlot(clientId(request))) {
+  // 하루 5회 제한 (AI 사용 비용 보호). AI가 결과를 돌려준 경우만 1회로 세요.
+  const id = clientId(request);
+  if (!takeSlot(id)) {
     return fail(MESSAGES.dailyLimit, 429);
   }
 
@@ -52,11 +60,13 @@ export async function POST(request: Request) {
 
   const outcome = await analyzeVideo(apiKey, video);
   if (!outcome.ok) {
+    releaseSlot(id); // 서버 오류·시간 초과는 횟수에 세지 않아요
     return fail(outcome.message, outcome.status, outcome.retryable);
   }
 
   const safe = applySafetyRules(outcome.raw);
   if (safe.kind === "blocked") {
+    releaseSlot(id); // 진단 표현 차단 등으로 결과를 못 보여 준 경우도 세지 않아요
     return fail(
       safe.reason === "diagnosis"
         ? "분석 결과에 의학적으로 들릴 수 있는 표현이 있어 보여 드리지 않았어요. 다시 시도해 주세요."

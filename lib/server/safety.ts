@@ -11,6 +11,7 @@ const DIAGNOSIS_PATTERN =
 const PAIN_PATTERN = /통증|아프|아픔|시큰|저림|부상/;
 
 const MAX_FEEDBACK = 3; // 피드백은 반드시 3개 이내
+const EXCELLENT_MIN_SCORE = 90; // "훌륭한 자세" 화면을 보여 주는 최소 점수
 
 export type SafetyOutcome =
   | { kind: "result"; result: AnalysisResult }
@@ -61,7 +62,8 @@ export function applySafetyRules(raw: Record<string, unknown>): SafetyOutcome {
       exercise,
       score: Math.min(100, Math.max(0, score)),
       summary,
-      excellent: raw.excellent === true,
+      // 자세 "완벽"은 AI가 그렇게 판단하고 점수가 90점 이상일 때만 인정해요
+      excellent: raw.excellent === true && score >= EXCELLENT_MIN_SCORE,
       feedback,
       painWarning:
         raw.painSignal === true || PAIN_PATTERN.test(allText) ? MESSAGES.painWarning : null,

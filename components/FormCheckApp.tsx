@@ -83,6 +83,7 @@ export default function FormCheckApp() {
     try {
       const body = new FormData();
       body.append("video", file);
+      body.append("consent", "true"); // 동의 체크가 된 경우에만 여기까지 와요
       const res = await fetch("/api/analyze", {
         method: "POST",
         body,

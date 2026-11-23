@@ -19,7 +19,7 @@ export default function ConsentCheck({
       <span>
         <span className="font-medium">영상이 AI 분석을 위해 외부 AI 서비스(Google Gemini)로 전송되는 것에 동의합니다.</span>
         <span className="mt-1 block text-xs text-muted">
-          이 서비스는 영상을 저장하지 않습니다. 동의해야 분석을 시작할 수 있어요.
+          영상은 분석하는 동안에만 임시로 처리되고 분석이 끝나면 바로 삭제되며, 이 서비스는 영상을 보관하지 않습니다. 동의해야 분석을 시작할 수 있어요.
         </span>
       </span>
     </label>

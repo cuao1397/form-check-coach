@@ -19,6 +19,12 @@ export function clientId(request: Request): string {
   );
 }
 
+/** 분석이 결과를 내지 못했을 때(서버 오류·시간 초과 등) 쓴 1회를 돌려줘요 */
+export function releaseSlot(id: string): void {
+  const entry = usage.get(id);
+  if (entry && entry.day === today() && entry.count > 0) entry.count -= 1;
+}
+
 /** 오늘 횟수가 남아 있으면 1회 쓰고 true, 다 썼으면 false */
 export function takeSlot(id: string): boolean {
   const day = today();
