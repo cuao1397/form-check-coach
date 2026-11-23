@@ -44,11 +44,11 @@ export default function UploadZone({
         여기를 눌러 고르거나, 영상을 끌어다 놓으세요
       </span>
       <span className="rounded-full bg-surface-2 px-3 py-1 text-xs text-muted">
-        {MAX_VIDEO_SECONDS}초 이내 · {MAX_VIDEO_MB}MB 이하
+        {MAX_VIDEO_SECONDS}초 이내 · {MAX_VIDEO_MB}MB 이하 · MP4/MOV
       </span>
       <input
         type="file"
-        accept="video/*"
+        accept=".mp4,.mov,video/mp4,video/quicktime"
         className="sr-only"
         disabled={disabled}
         onChange={(e) => {

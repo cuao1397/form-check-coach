@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MAX_VIDEO_BYTES, MAX_VIDEO_MB, MAX_VIDEO_SECONDS } from "@/lib/limits";
+import {
+  MAX_VIDEO_BYTES,
+  MAX_VIDEO_SECONDS,
+  MESSAGES,
+  isAllowedVideo,
+} from "@/lib/limits";
 import type { AnalysisResult } from "@/lib/types";
 import AnalyzingLoader from "./AnalyzingLoader";
+import ConsentCheck from "./ConsentCheck";
 import ResultView from "./ResultView";
 import UploadZone from "./UploadZone";
 
@@ -27,6 +33,7 @@ function readDuration(url: string): Promise<number> {
 export default function FormCheckApp() {
   const [step, setStep] = useState<Step>({ name: "idle" });
   const [error, setError] = useState<string | null>(null);
+  const [consent, setConsent] = useState(false);
 
   // 미리보기 주소는 화면이 바뀔 때 정리해요
   const previewUrl = step.name === "idle" ? null : step.url;
@@ -36,14 +43,11 @@ export default function FormCheckApp() {
     };
   }, [previewUrl]);
 
+  // 형식·용량·길이를 올리는 즉시 검사해요 (PRD 4번 예외 처리)
   async function handleFile(file: File) {
     setError(null);
-    if (!file.type.startsWith("video/")) {
-      setError("영상 파일만 올릴 수 있어요.");
-      return;
-    }
-    if (file.size > MAX_VIDEO_BYTES) {
-      setError(`영상 용량은 ${MAX_VIDEO_MB}MB 이하만 지원해요.`);
+    if (!isAllowedVideo(file.name, file.type) || file.size > MAX_VIDEO_BYTES) {
+      setError(MESSAGES.fileLimit);
       return;
     }
     const url = URL.createObjectURL(file);
@@ -51,21 +55,20 @@ export default function FormCheckApp() {
       const seconds = await readDuration(url);
       if (seconds > MAX_VIDEO_SECONDS) {
         URL.revokeObjectURL(url);
-        setError(
-          `영상 길이는 ${MAX_VIDEO_SECONDS}초 이내만 지원해요. (올린 영상: 약 ${Math.ceil(seconds)}초)`,
-        );
+        setError(MESSAGES.fileLimit);
         return;
       }
     } catch {
       URL.revokeObjectURL(url);
-      setError("이 영상을 읽을 수 없어요. 다른 영상으로 시도해 주세요.");
+      setError(MESSAGES.fileLimit);
       return;
     }
+    setConsent(false);
     setStep({ name: "ready", file, url });
   }
 
   async function analyze() {
-    if (step.name !== "ready") return;
+    if (step.name !== "ready" || !consent) return;
     const { file, url } = step;
     setError(null);
     setStep({ name: "analyzing", url });
@@ -98,7 +101,15 @@ export default function FormCheckApp() {
         </p>
       )}
 
-      {step.name === "idle" && <UploadZone onFile={handleFile} />}
+      {step.name === "idle" && (
+        <>
+          <UploadZone onFile={handleFile} />
+          {/* 촬영 가이드 (PRD 4번) */}
+          <p className="text-center text-sm text-muted">
+            📷 전신이 나오도록 측면 또는 45도 각도에서 밝은 곳에서 촬영해 주세요
+          </p>
+        </>
+      )}
 
       {(step.name === "ready" || step.name === "analyzing") && (
         <div className="flex flex-col gap-4">
@@ -110,22 +121,26 @@ export default function FormCheckApp() {
             className="max-h-80 w-full rounded-3xl border border-line bg-black object-contain"
           />
           {step.name === "ready" ? (
-            <div className="flex flex-wrap justify-center gap-3">
-              <button
-                type="button"
-                onClick={analyze}
-                className="rounded-full bg-accent px-8 py-3 font-bold text-white transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                자세 분석 시작
-              </button>
-              <button
-                type="button"
-                onClick={reset}
-                className="rounded-full border border-line px-6 py-3 text-muted transition hover:bg-surface-2"
-              >
-                다른 영상 고르기
-              </button>
-            </div>
+            <>
+              <ConsentCheck checked={consent} onChange={setConsent} />
+              <div className="flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={analyze}
+                  disabled={!consent}
+                  className="rounded-full bg-accent px-8 py-3 font-bold text-white transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
+                >
+                  자세 분석 시작
+                </button>
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="rounded-full border border-line px-6 py-3 text-muted transition hover:bg-surface-2"
+                >
+                  다른 영상 고르기
+                </button>
+              </div>
+            </>
           ) : (
             <AnalyzingLoader />
           )}
