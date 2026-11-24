@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 스마트 폼 체크 코치
 
-## Getting Started
+운동 영상을 올리면 AI 트레이너가 **자세의 틀린 점**을 알려 주고, 바로 해볼 수 있는 **교정 포인트(최대 3개)** 를 정리해 주는 웹 앱이에요.
 
-First, run the development server:
+- **배포 주소:** https://form-check-coach.vercel.app
+- **지원 운동:** 스쿼트, 데드리프트, 벤치프레스
+- **입력:** 15초 이내, 50MB 이하의 MP4/MOV 영상 1개
+
+> 이 서비스는 의료 서비스가 아니에요. AI는 의료 진단을 하지 않으며, 통증이 있으면 전문의/PT 상담을 권해요.
+
+## 주요 기능
+
+1. **영상 업로드와 AI 자세 분석** — Google Gemini가 영상을 보고 종합 점수(0~100)를 내요. 점수는 "AI의 종합 판단"이에요.
+2. **맞춤형 교정 피드백 카드(최대 3개)** — 가장 시급한 교정 포인트와 구체적인 개선 팁을 보여 줘요.
+3. **안전 규칙** — 의료 진단 표현 차단, 통증 신호가 보이면 전문가 상담 안내, 포인트 3개 제한.
+4. **예외 안내** — 사람이 여러 명이거나 어두운 영상, 지원하지 않는 운동은 추측하지 않고 다시 촬영/지원 범위를 안내해요.
+5. **자세가 완벽할 때** — "훌륭한 자세입니다!" 칭찬과 유지할 포인트를 보여 줘요.
+
+## 개인정보와 비용 보호
+
+- 영상은 **보관하지 않아요.** 분석하는 동안에만 임시로 처리하고(큰 영상은 비공개 Vercel Blob), 끝나면 바로 삭제해요.
+- 영상을 외부 AI(Google Gemini)로 보내기 전에 **동의 체크**를 받아요.
+- 하루 이용 횟수는 접속 주소(IP)를 되돌릴 수 없는 해시로 바꿔 세고, 기록은 이틀 뒤 자동으로 지워져요.
+- 한 사람당 하루 5회, 서비스 전체 하루 200회까지만 분석해요.
+
+## 기술 스택
+
+- Next.js 16 (App Router), TypeScript, Tailwind CSS
+- Google Gemini API (서버에서만 호출)
+- Vercel (배포), Vercel Blob (큰 영상 임시 저장), Upstash Redis (하루 횟수)
+- Vitest (자동 시험 60건)
+
+## 직접 실행해 보기
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm test         # 자동 시험
+npm run lint
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+프로젝트 폴더에 `.env.local` 파일을 만들고 키를 넣어야 분석이 동작해요. (이 파일은 저장소에 올리지 않아요.)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+GEMINI_API_KEY=여기에_본인_키
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`BLOB_READ_WRITE_TOKEN`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`은 배포 환경(Vercel)에서만 필요해요. 없으면 영상을 서버로 바로 보내고 횟수는 서버 메모리로 세요.
 
-## Learn More
+## 문서
 
-To learn more about Next.js, take a look at the following resources:
+| 문서 | 내용 |
+|---|---|
+| [PRD.md](PRD.md) | 기획서 (문제, 목표, 기능, 범위, 보안·개인정보) |
+| [PLAN.md](PLAN.md) | 계획서 (성공 기준, 작업 순서 14개, 위험) |
+| [DESIGN.md](DESIGN.md) | 설계서 (구조, 데이터 흐름, API, 화면, 시험 계획) |
+| [CHECK.md](CHECK.md) | 점검 결과 (성공 기준 판정, 보안 점검) |
+| [CLAUDE.md](CLAUDE.md) | AI 작업 규칙 |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 만든 사람
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+김윤식
