@@ -1,4 +1,4 @@
-import { MESSAGES } from "../limits";
+import { MAX_VIDEO_SECONDS, MESSAGES } from "../limits";
 
 // Gemini(AI)에 영상을 보내 자세 분석 결과를 받아 와요. 서버에서만 실행돼요.
 // API 키는 여기로 전달받아 쓰기만 하고, 화면으로는 절대 내보내지 않아요.
@@ -7,6 +7,8 @@ const GEMINI = "https://generativelanguage.googleapis.com";
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 // 이 크기 이하는 요청에 직접 담아 보내고, 넘으면 임시 업로드(Files API)를 써요
 const INLINE_LIMIT_BYTES = 15 * 1024 * 1024;
+// 서버가 영상 길이를 직접 재지 않으므로, AI에게 앞 15초까지만 보게 해서 긴 영상으로 비용이 커지는 것을 막아요
+const VIDEO_LIMIT = { end_offset: `${MAX_VIDEO_SECONDS}s` };
 // 1차(기본 모델)가 실패하면 다른 모델로 한 번 더 분석해요. 비워 두면 대체 없이 1차만 써요.
 const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? "gemini-3.5-flash-lite";
 // 화면 제한(60초)보다 조금 먼저 끊어서 "지연" 안내를 보여 줘요
@@ -162,12 +164,15 @@ export async function analyzeVideo(
     let videoPart: Record<string, unknown>;
     if (file.size <= INLINE_LIMIT_BYTES) {
       const data = Buffer.from(await file.arrayBuffer()).toString("base64");
-      videoPart = { inline_data: { mime_type: file.type, data } };
+      videoPart = { inline_data: { mime_type: file.type, data }, video_metadata: VIDEO_LIMIT };
     } else {
       const uploaded = await uploadToGemini(apiKey, file, signal, (name) => {
         uploadedName = name;
       });
-      videoPart = { file_data: { mime_type: file.type, file_uri: uploaded.uri } };
+      videoPart = {
+        file_data: { mime_type: file.type, file_uri: uploaded.uri },
+        video_metadata: VIDEO_LIMIT,
+      };
     }
 
     // 1차: 기본 모델로 분석해요

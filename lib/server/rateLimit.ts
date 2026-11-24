@@ -1,9 +1,10 @@
-import { MAX_DAILY_ANALYSES } from "../limits";
+import { MAX_DAILY_ANALYSES, MAX_DAILY_ATTEMPTS } from "../limits";
 
 // 한 사람(접속 주소 기준)이 하루에 분석할 수 있는 횟수를 세요.
 // 참고: 서버 메모리에 세기 때문에 서버가 다시 시작되면 0으로 돌아가요.
 // 배포 환경(여러 서버로 나뉘는 곳)에서는 완벽하지 않은 "최선의 보호"예요.
-const usage = new Map<string, { day: string; count: number }>();
+// count: 결과를 받은 횟수(실패하면 돌려받아요), attempts: AI를 부른 시도 횟수(돌려받지 않아요)
+const usage = new Map<string, { day: string; count: number; attempts: number }>();
 
 function today() {
   return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
@@ -42,10 +43,12 @@ export function takeSlot(id: string): boolean {
 
   const entry = usage.get(id);
   if (!entry || entry.day !== day) {
-    usage.set(id, { day, count: 1 });
+    usage.set(id, { day, count: 1, attempts: 1 });
     return true;
   }
-  if (entry.count >= MAX_DAILY_ANALYSES) return false;
+  // 실패로 횟수를 돌려받아도 시도 횟수는 남아서, 일부러 실패시켜 AI를 계속 쓰는 것을 막아요
+  if (entry.count >= MAX_DAILY_ANALYSES || entry.attempts >= MAX_DAILY_ATTEMPTS) return false;
   entry.count += 1;
+  entry.attempts += 1;
   return true;
 }

@@ -9,6 +9,8 @@ export const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov"];
 
 // 한 사람당 하루 분석 횟수 (AI 사용 비용 보호)
 export const MAX_DAILY_ANALYSES = 5;
+// 실패해서 횟수를 돌려받은 시도까지 포함한 하루 AI 호출 상한 (일부러 실패시켜 비용을 쓰는 것을 막아요)
+export const MAX_DAILY_ATTEMPTS = 10;
 
 // AI 응답을 기다리는 최대 시간 (밀리초)
 export const CLIENT_TIMEOUT_MS = 60_000;

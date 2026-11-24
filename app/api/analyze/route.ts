@@ -23,6 +23,23 @@ export async function POST(request: Request) {
     );
   }
 
+  // 다른 사이트에서 방문자의 브라우저로 이 API를 몰래 부르는 것을 막아요.
+  // (브라우저는 요청한 사이트 주소를 Origin에 담아 보내요. 주소가 우리 서버와 다르면 거절해요.)
+  const origin = request.headers.get("origin");
+  const site = request.headers.get("sec-fetch-site");
+  const host = request.headers.get("host");
+  let crossSite = site !== null && site !== "same-origin" && site !== "none";
+  if (origin) {
+    try {
+      crossSite = crossSite || new URL(origin).host !== host;
+    } catch {
+      crossSite = true;
+    }
+  }
+  if (crossSite) {
+    return fail("허용되지 않은 요청이에요.", 403);
+  }
+
   let file: FormDataEntryValue | null;
   let consent: FormDataEntryValue | null;
   try {
