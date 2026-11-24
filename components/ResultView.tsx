@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import type { AnalysisResult } from "@/lib/types";
 
 type Ok = Extract<AnalysisResult, { status: "ok" }>;
@@ -18,6 +21,13 @@ function scoreColor(score: number) {
   if (score >= 80) return "var(--good)";
   if (score >= 60) return "var(--warn)";
   return "var(--bad)";
+}
+
+// 색을 구별하기 어려운 사람도 알 수 있게 점수 구간을 글자로도 알려 줘요
+function scoreLabel(score: number) {
+  if (score >= 80) return "좋음";
+  if (score >= 60) return "보통";
+  return "개선 필요";
 }
 
 // 점수를 동그란 게이지로 보여 줘요
@@ -47,6 +57,9 @@ function ScoreGauge({ score }: { score: number }) {
           {score}
         </span>
         <span className="text-xs text-muted">/ 100점</span>
+        <span className="mt-1 text-xs font-bold" style={{ color }}>
+          {scoreLabel(score)}
+        </span>
       </div>
     </div>
   );
@@ -60,8 +73,16 @@ export default function ResultView({
   result: Ok;
   onReset: () => void;
 }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  // 결과가 나오면 키보드 포커스를 결과 제목으로 옮겨요 (화면 낭독기도 여기부터 읽어 줘요)
+  useEffect(() => heading.current?.focus(), []);
+
   return (
     <div className="flex flex-col gap-5">
+      <p role="status" className="sr-only">
+        분석이 끝났어요. {result.exercise} 자세 점수는 100점 만점에 {result.score}점,{" "}
+        {scoreLabel(result.score)}이에요.
+      </p>
       <section
         aria-label="자세 점수"
         className="flex flex-col items-center gap-5 rounded-3xl border border-line bg-surface p-6 text-center sm:flex-row sm:text-left"
@@ -72,7 +93,7 @@ export default function ResultView({
             {result.exercise}
           </span>
           {/* 자세가 완벽하면 칭찬 문구를 보여 줘요 */}
-          <h2 className="text-xl font-bold">
+          <h2 ref={heading} tabIndex={-1} className="text-xl font-bold outline-none">
             {result.excellent ? "훌륭한 자세입니다! ✨" : "종합 자세 점수"}
           </h2>
           {result.summary && <p className="text-muted">{result.summary}</p>}

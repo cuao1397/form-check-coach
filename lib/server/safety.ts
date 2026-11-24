@@ -19,6 +19,12 @@ const DIAGNOSIS_PATTERN = new RegExp(
 // 영어로 쓴 병명·진단 표현
 const DIAGNOSIS_PATTERN_EN =
   /\b(?:ACL|MCL|PCL|tendinitis|tendonitis|herniat\w*|sprain|strain|fracture|syndrome|diagnos\w*)\b/i;
+// 공백·기호를 지운 글에서는 오탐이 없는 병명만 검사해요 ("~염" 같은 넓은 규칙은 쓰지 않아요)
+const DIAGNOSIS_PATTERN_SQUASHED =
+  /증후군|염증|파열|탈구|디스크|골절|협착|측만|추간판|탈출증|신경통|염좌|퇴행성|회전근개|오십견|연골연화|인대손상|연골손상|반월판손상|근육손상|힘줄손상|관절손상/;
+// 통증이 의심될 때 하면 안 되는 조언 (무게·강도를 올리라는 말, 참고 계속하라는 말)
+const PUSH_PATTERN = /증량|무게를\s*(?:더\s*)?(?:늘|올|높)|더\s*무겁|무겁게|한계까지|참고\s*(?:계속|끝까지)|이를\s*악물/;
+const SAFE_TIP = "통증이나 불편함이 있다면 무리하지 말고, 가벼운 무게로 자세부터 천천히 점검해 보세요.";
 // 분석을 허용하는 운동 3종 (이 밖의 운동은 지원하지 않는 운동으로 안내해요)
 const SUPPORTED_EXERCISE = /스쿼트|데드\s*리프트|벤치\s*프레스|squat|deadlift|bench\s*press/i;
 // 통증·부상을 말하는 표현이 나오면 전문가 상담 경고를 자동으로 붙여요
@@ -72,12 +78,24 @@ export function applySafetyRules(raw: Record<string, unknown>): SafetyOutcome {
   const summary = cleanText(raw.summary, 200);
 
   const allText = [exercise, summary, ...feedback.flatMap((f) => [f.point, f.tip])].join(" ");
-  if (DIAGNOSIS_PATTERN.test(allText) || DIAGNOSIS_PATTERN_EN.test(allText)) {
+  // 글자 사이에 공백·기호를 끼워 넣어 필터를 피하는 경우("디 스 크")도 잡도록, 한글·영문·숫자만 남긴 글도 검사해요
+  const squashed = allText.replace(/[^가-힣a-zA-Z0-9]/g, "");
+  if (
+    DIAGNOSIS_PATTERN.test(allText) ||
+    DIAGNOSIS_PATTERN_EN.test(allText) ||
+    DIAGNOSIS_PATTERN_SQUASHED.test(squashed)
+  ) {
     return { kind: "blocked", reason: "diagnosis" };
   }
 
   const painWarning =
     raw.painSignal === true || PAIN_PATTERN.test(allText) ? MESSAGES.painWarning : null;
+  // 통증 "주의 모드": 통증이 보이는데 무게·강도를 올리라는 조언이 섞이면 안전한 문장으로 바꿔요
+  if (painWarning) {
+    for (const f of feedback) {
+      if (PUSH_PATTERN.test(f.tip)) f.tip = SAFE_TIP;
+    }
+  }
 
   return {
     kind: "result",

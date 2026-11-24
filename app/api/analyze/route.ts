@@ -1,4 +1,11 @@
-import { MAX_VIDEO_BYTES, MAX_VIDEO_MB, MESSAGES, isAllowedVideo } from "@/lib/limits";
+import {
+  MAX_VIDEO_BYTES,
+  MAX_VIDEO_MB,
+  MAX_VIDEO_SECONDS,
+  MESSAGES,
+  isAllowedVideo,
+} from "@/lib/limits";
+import { hasVideoSignature, readVideoSeconds } from "@/lib/server/video";
 import { analyzeVideo } from "@/lib/server/analyze";
 import { clientId, releaseSlot, takeSlot } from "@/lib/server/rateLimit";
 import { applySafetyRules } from "@/lib/server/safety";
@@ -17,10 +24,9 @@ function fail(error: string, status: number, retryable = false) {
 export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return fail(
-      "서버에 GEMINI_API_KEY가 설정되어 있지 않아요. .env 파일에 키를 넣고 서버를 다시 켜 주세요.",
-      500,
-    );
+    // 방문자에게는 내부 설정 이름을 알리지 않고, 원인은 서버 로그에만 남겨요
+    console.error("[analyze] GEMINI_API_KEY가 설정되어 있지 않아요. .env를 확인하고 서버를 다시 켜 주세요.");
+    return fail(MESSAGES.serviceError, 500);
   }
 
   // 다른 사이트에서 방문자의 브라우저로 이 API를 몰래 부르는 것을 막아요.
@@ -38,6 +44,13 @@ export async function POST(request: Request) {
   }
   if (crossSite) {
     return fail("허용되지 않은 요청이에요.", 403);
+  }
+
+  // 본문을 읽기 전에 헤더로 크기를 먼저 봐서, 너무 큰 요청은 읽지 않고 돌려보내요
+  // (영상 50MB + 양식 여유 1MB. 헤더는 거짓일 수 있어서 아래 file.size 검사도 그대로 해요)
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_VIDEO_BYTES + 1024 * 1024) {
+    return fail(`영상 용량은 ${MAX_VIDEO_MB}MB 이하만 지원해요.`, 413);
   }
 
   let file: FormDataEntryValue | null;
@@ -62,6 +75,18 @@ export async function POST(request: Request) {
   }
   if (file.size > MAX_VIDEO_BYTES) {
     return fail(`영상 용량은 ${MAX_VIDEO_MB}MB 이하만 지원해요.`, 400);
+  }
+
+  // 이름·브라우저가 알려 준 형식은 속일 수 있어서, 파일 앞부분이 실제 MP4/MOV 모양인지 확인해요
+  const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (!hasVideoSignature(head)) {
+    return fail(MESSAGES.fileLimit, 400);
+  }
+  // 영상 길이도 파일 정보(mvhd)에서 직접 읽어요. 못 읽는 구조면 막지 않고 AI에게 15초까지만 보게 해요.
+  // (약간의 오차를 감안해 1초 여유를 둬요)
+  const seconds = await readVideoSeconds(file);
+  if (seconds !== null && seconds > MAX_VIDEO_SECONDS + 1) {
+    return fail(MESSAGES.fileLimit, 400);
   }
 
   // 하루 5회 제한 (AI 사용 비용 보호). AI가 결과를 돌려준 경우만 1회로 세요.

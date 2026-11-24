@@ -26,7 +26,7 @@ export default function UploadZone({
         const file = e.dataTransfer.files[0];
         if (!disabled && file) onFile(file);
       }}
-      className={`flex cursor-pointer flex-col items-center gap-3 rounded-3xl border-2 border-dashed px-6 py-14 text-center transition ${
+      className={`flex cursor-pointer flex-col items-center gap-3 rounded-3xl border-2 border-dashed px-6 py-14 text-center transition focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${
         dragging
           ? "border-accent bg-accent/10"
           : "border-line bg-surface hover:border-accent/60 hover:bg-surface-2"

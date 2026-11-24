@@ -63,8 +63,9 @@ export default function FormCheckApp() {
         return;
       }
     } catch {
+      // 길이를 못 읽는 건 조건 위반이 아니라 브라우저가 영상을 못 여는 경우예요
       URL.revokeObjectURL(url);
-      setError({ message: MESSAGES.fileLimit, retryable: false });
+      setError({ message: MESSAGES.unreadable, retryable: false });
       return;
     }
     setConsent(false);
@@ -143,7 +144,7 @@ export default function FormCheckApp() {
             <button
               type="button"
               onClick={analyze}
-              className="rounded-full bg-bad px-5 py-2 font-bold text-white transition hover:brightness-110"
+              className="rounded-full bg-bad px-5 py-2 font-bold text-white transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bad"
             >
               재시도
             </button>
@@ -185,7 +186,7 @@ export default function FormCheckApp() {
                 <button
                   type="button"
                   onClick={reset}
-                  className="rounded-full border border-line px-6 py-3 text-muted transition hover:bg-surface-2"
+                  className="rounded-full border border-line px-6 py-3 text-muted transition hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 >
                   다른 영상 고르기
                 </button>
