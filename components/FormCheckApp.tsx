@@ -1,8 +1,11 @@
 "use client";
 
+import { upload } from "@vercel/blob/client";
 import { useEffect, useState } from "react";
 import {
+  BLOB_THRESHOLD_BYTES,
   CLIENT_TIMEOUT_MS,
+  UPLOAD_TIMEOUT_MS,
   MAX_VIDEO_BYTES,
   MAX_VIDEO_SECONDS,
   MESSAGES,
@@ -22,6 +25,19 @@ type Step =
   | { name: "done"; result: AnalysisResult; url: string };
 
 type ErrorState = { message: string; retryable: boolean };
+
+// 이 환경에서 Blob 직접 업로드를 쓸 수 있는지 서버에 물어봐요 (한 번만 물어보고 기억해요)
+let blobEnabledCache: boolean | null = null;
+async function isBlobEnabled(): Promise<boolean> {
+  if (blobEnabledCache !== null) return blobEnabledCache;
+  try {
+    const res = await fetch("/api/blob");
+    blobEnabledCache = res.ok && (await res.json()).enabled === true;
+  } catch {
+    return false; // 물어보지 못했으면 기억하지 않고 이번에는 예전 방식으로 보내요
+  }
+  return blobEnabledCache;
+}
 
 // 브라우저에서 영상 길이를 재요
 function readDuration(url: string): Promise<number> {
@@ -79,17 +95,48 @@ export default function FormCheckApp() {
     setError(null);
     setStep({ name: "analyzing", url });
 
+    // 큰 영상은 서버를 거치지 않고 Vercel Blob에 직접 올려요 (배포 환경의 4.5MB 제한 때문에).
+    // Blob을 쓸 수 없는 환경(내 컴퓨터 등)이면 예전처럼 영상을 서버로 바로 보내요.
+    let blobUrl: string | null = null;
+    if (file.size > BLOB_THRESHOLD_BYTES && (await isBlobEnabled())) {
+      const uploadController = new AbortController();
+      const uploadTimer = setTimeout(() => uploadController.abort(), UPLOAD_TIMEOUT_MS);
+      try {
+        const ext = file.name.toLowerCase().endsWith(".mov") ? ".mov" : ".mp4";
+        const uploaded = await upload(`uploads/${crypto.randomUUID()}${ext}`, file, {
+          access: "private",
+          handleUploadUrl: "/api/blob",
+          contentType: file.type || (ext === ".mov" ? "video/quicktime" : "video/mp4"),
+          abortSignal: uploadController.signal,
+        });
+        blobUrl = uploaded.url;
+      } catch {
+        setError({ message: MESSAGES.uploadFailed, retryable: true });
+        setStep({ name: "ready", file, url });
+        return;
+      } finally {
+        clearTimeout(uploadTimer);
+      }
+    }
+
+    // 분석 대기 시간(60초)은 업로드가 끝난 뒤부터 세요
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
     try {
-      const body = new FormData();
-      body.append("video", file);
-      body.append("consent", "true"); // 동의 체크가 된 경우에만 여기까지 와요
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        body,
-        signal: controller.signal,
-      });
+      let init: RequestInit;
+      if (blobUrl) {
+        init = {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ blobUrl, consent: true }), // 동의 체크가 된 경우에만 여기까지 와요
+        };
+      } else {
+        const body = new FormData();
+        body.append("video", file);
+        body.append("consent", "true");
+        init = { method: "POST", body };
+      }
+      const res = await fetch("/api/analyze", { ...init, signal: controller.signal });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         // 서버(Vercel 등)가 JSON이 아닌 응답을 보내면 상태 코드로 원인을 알려 줘요

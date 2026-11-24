@@ -20,6 +20,23 @@ export function clientId(request: Request): string {
   );
 }
 
+// Blob 업로드 허가를 받은 횟수 (분석을 안 하고 업로드만 반복해 저장 공간을 쓰는 것을 막아요)
+const uploads = new Map<string, { day: string; count: number }>();
+
+/** 오늘 업로드 허가가 남아 있으면 1회 쓰고 true. 하루 분석 시도 상한(MAX_DAILY_ATTEMPTS)을 같이 써요 */
+export function takeUploadSlot(id: string): boolean {
+  if (process.env.NODE_ENV === "development") return true;
+  const day = today();
+  const entry = uploads.get(id);
+  if (!entry || entry.day !== day) {
+    uploads.set(id, { day, count: 1 });
+    return true;
+  }
+  if (entry.count >= MAX_DAILY_ATTEMPTS) return false;
+  entry.count += 1;
+  return true;
+}
+
 /** 분석이 결과를 내지 못했을 때(서버 오류·시간 초과 등) 쓴 1회를 돌려줘요 */
 export function releaseSlot(id: string): void {
   const entry = usage.get(id);

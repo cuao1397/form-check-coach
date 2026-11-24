@@ -3,6 +3,10 @@ export const MAX_VIDEO_SECONDS = 15; // 영상 길이는 최대 15초
 export const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 파일 용량은 50MB 이하
 export const MAX_VIDEO_MB = MAX_VIDEO_BYTES / (1024 * 1024);
 
+// 이 크기를 넘는 영상은 서버를 거치지 않고 Vercel Blob에 직접 올려요.
+// (Vercel 서버 함수는 요청 본문이 약 4.5MB까지라서, 양식 여유를 두고 4MB로 잡아요)
+export const BLOB_THRESHOLD_BYTES = 4 * 1024 * 1024;
+
 // 지원하는 영상 형식: MP4, MOV
 export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime"];
 export const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov"];
@@ -14,6 +18,8 @@ export const MAX_DAILY_ATTEMPTS = 10;
 
 // AI 응답을 기다리는 최대 시간 (밀리초)
 export const CLIENT_TIMEOUT_MS = 60_000;
+// 큰 영상을 Blob에 올리는 최대 시간 (AI 대기 시간과 따로 세요)
+export const UPLOAD_TIMEOUT_MS = 120_000;
 
 // PRD 4번 "예외 상황과 화면 처리"에 적힌 안내 문구
 export const MESSAGES = {
@@ -21,6 +27,7 @@ export const MESSAGES = {
   // 영상 파일은 맞지만 이 브라우저가 열지 못할 때 (예: 아이폰 HEVC 영상을 PC 크롬에서 올린 경우)
   unreadable:
     "이 브라우저에서 영상을 열지 못했어요. 아이폰이라면 카메라 설정의 '호환성 우선(H.264)'으로 다시 촬영하거나, MP4로 변환해서 올려 주세요.",
+  uploadFailed: "영상을 올리지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.",
   // 서버 설정·키 문제처럼 방문자가 고칠 수 없는 오류 (원인은 서버 로그에만 남겨요)
   serviceError: "서비스에 일시적인 문제가 있어요. 잠시 후 다시 시도해 주세요.",
   unclear: "1명의 전신이 밝게 나오도록 다시 촬영해 주세요.",

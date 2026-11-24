@@ -12,7 +12,8 @@ const CSP = [
   "img-src 'self' data: blob:",
   "media-src 'self' blob:", // 올린 영상 미리보기(blob:)
   "font-src 'self' data:",
-  `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+  // 큰 영상을 Vercel Blob에 직접 올릴 때 브라우저가 연결하는 곳
+  `connect-src 'self' https://vercel.com https://*.vercel-storage.com${isDev ? " ws: wss:" : ""}`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
