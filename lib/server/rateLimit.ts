@@ -27,6 +27,10 @@ export function releaseSlot(id: string): void {
 
 /** 오늘 횟수가 남아 있으면 1회 쓰고 true, 다 썼으면 false */
 export function takeSlot(id: string): boolean {
+  // 내 컴퓨터의 개발 서버(npm run dev)에서는 시험을 마음껏 할 수 있게 횟수를 세지 않아요.
+  // 배포한 서버(production)에서는 그대로 하루 5회를 지켜요.
+  if (process.env.NODE_ENV === "development") return true;
+
   const day = today();
 
   // 지난 날짜 기록은 가끔 정리해요 (메모리가 계속 늘지 않게)
