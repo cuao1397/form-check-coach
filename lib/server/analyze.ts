@@ -54,9 +54,16 @@ export type AnalyzeOutcome =
   | { ok: false; status: number; message: string; retryable: boolean };
 
 /** 큰 영상은 Gemini 임시 저장소에 올려요. 분석이 끝나면 바로 지워요. */
-async function uploadToGemini(apiKey: string, file: File) {
+async function uploadToGemini(
+  apiKey: string,
+  file: File,
+  signal: AbortSignal,
+  // 올린 파일 이름을 받는 즉시 알려 줘요. 이후 어디서 실패해도 바깥에서 지울 수 있게요.
+  onUploaded: (name: string) => void,
+) {
   const start = await fetch(`${GEMINI}/upload/v1beta/files`, {
     method: "POST",
+    signal,
     headers: {
       "x-goog-api-key": apiKey,
       "X-Goog-Upload-Protocol": "resumable",
@@ -72,6 +79,7 @@ async function uploadToGemini(apiKey: string, file: File) {
 
   const done = await fetch(uploadUrl, {
     method: "POST",
+    signal,
     headers: {
       "Content-Length": String(file.size),
       "X-Goog-Upload-Offset": "0",
@@ -80,13 +88,16 @@ async function uploadToGemini(apiKey: string, file: File) {
     body: Buffer.from(await file.arrayBuffer()),
   });
   const info = (await done.json().catch(() => null))?.file;
+  if (info?.name) onUploaded(info.name as string); // 실패해도 지울 수 있게 이름부터 알려 줘요
   if (!done.ok || !info?.uri || !info?.name) throw new Error("upload-finish");
 
   // 영상이 처리되어 사용할 수 있을 때까지 잠시 기다려요 (최대 약 20초)
   let state: string = info.state;
   for (let i = 0; i < 10 && state === "PROCESSING"; i++) {
     await new Promise((r) => setTimeout(r, 2000));
+    signal.throwIfAborted(); // 전체 시간이 다 됐거나 화면이 끊었으면 멈춰요
     const res = await fetch(`${GEMINI}/v1beta/${info.name}`, {
+      signal,
       headers: { "x-goog-api-key": apiKey },
     });
     state = (await res.json().catch(() => null))?.state ?? state;
@@ -99,6 +110,8 @@ async function uploadToGemini(apiKey: string, file: File) {
 async function deleteFromGemini(apiKey: string, name: string) {
   await fetch(`${GEMINI}/v1beta/${name}`, {
     method: "DELETE",
+    // 분석 시간이 다 된 뒤에도 지워지도록 별도의 짧은 제한만 둬요
+    signal: AbortSignal.timeout(10_000),
     headers: { "x-goog-api-key": apiKey },
   }).catch(() => undefined);
 }
@@ -108,11 +121,11 @@ function isTimeout(e: unknown) {
 }
 
 /** 지정한 모델에 영상 분석을 요청해요 (한 번의 호출) */
-function callModel(apiKey: string, model: string, videoPart: Record<string, unknown>, timeoutMs: number) {
+function callModel(apiKey: string, model: string, videoPart: Record<string, unknown>, signal: AbortSignal) {
   return fetch(`${GEMINI}/v1beta/models/${model}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-    signal: AbortSignal.timeout(timeoutMs),
+    signal,
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [
@@ -130,8 +143,19 @@ function failure(status: number, message: string, retryable = true): AnalyzeOutc
   return { ok: false, status, message, retryable };
 }
 
-export async function analyzeVideo(apiKey: string, file: File): Promise<AnalyzeOutcome> {
-  let uploaded: { uri: string; name: string } | null = null;
+/**
+ * clientSignal: 화면이 연결을 끊으면 신호가 와요. 그러면 분석도 바로 멈춰요.
+ * 영상 업로드·처리 대기·AI 분석을 모두 합쳐 TOTAL_TIMEOUT_MS 안에 끝내요.
+ */
+export async function analyzeVideo(
+  apiKey: string,
+  file: File,
+  clientSignal?: AbortSignal,
+): Promise<AnalyzeOutcome> {
+  const startedAt = Date.now();
+  const timeLimit = AbortSignal.timeout(TOTAL_TIMEOUT_MS);
+  const signal = clientSignal ? AbortSignal.any([clientSignal, timeLimit]) : timeLimit;
+  let uploadedName: string | null = null;
 
   try {
     // 영상을 모델에 전달하는 방법을 고르는 부분
@@ -140,17 +164,23 @@ export async function analyzeVideo(apiKey: string, file: File): Promise<AnalyzeO
       const data = Buffer.from(await file.arrayBuffer()).toString("base64");
       videoPart = { inline_data: { mime_type: file.type, data } };
     } else {
-      uploaded = await uploadToGemini(apiKey, file);
+      const uploaded = await uploadToGemini(apiKey, file, signal, (name) => {
+        uploadedName = name;
+      });
       videoPart = { file_data: { mime_type: file.type, file_uri: uploaded.uri } };
     }
 
     // 1차: 기본 모델로 분석해요
-    const startedAt = Date.now();
     let model = MODEL;
     let upstream: Response | null = null;
     let data: { error?: { message?: string }; candidates?: { content?: { parts?: unknown } }[] } | null = null;
     try {
-      upstream = await callModel(apiKey, model, videoPart, PRIMARY_TIMEOUT_MS);
+      upstream = await callModel(
+        apiKey,
+        model,
+        videoPart,
+        AbortSignal.any([signal, AbortSignal.timeout(PRIMARY_TIMEOUT_MS)]),
+      );
       data = await upstream.json().catch(() => null);
     } catch (e) {
       // 시간 초과·연결 실패는 아래에서 대체 모델로 다시 시도해요
@@ -163,7 +193,7 @@ export async function analyzeVideo(apiKey: string, file: File): Promise<AnalyzeO
       const remaining = TOTAL_TIMEOUT_MS - (Date.now() - startedAt);
       if (remaining > 5_000) {
         model = FALLBACK_MODEL;
-        upstream = await callModel(apiKey, model, videoPart, remaining);
+        upstream = await callModel(apiKey, model, videoPart, signal);
         data = await upstream.json().catch(() => null);
       }
     }
@@ -200,6 +230,6 @@ export async function analyzeVideo(apiKey: string, file: File): Promise<AnalyzeO
     return failure(502, "영상을 분석하는 중에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.");
   } finally {
     // 영상은 저장하지 않아요 (PRD 7번): 임시로 올린 파일은 바로 지워요
-    if (uploaded) await deleteFromGemini(apiKey, uploaded.name);
+    if (uploadedName) await deleteFromGemini(apiKey, uploadedName);
   }
 }

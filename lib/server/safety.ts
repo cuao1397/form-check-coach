@@ -5,8 +5,22 @@ import type { AnalysisResult, FeedbackItem } from "../types";
 // 이 파일은 순수한 규칙만 담고 있어서 따로 시험하기 쉬워요.
 
 // 의학적 진단처럼 읽히는 표현이 나오면 결과를 내보내지 않아요 (진단 표현 0건)
-const DIAGNOSIS_PATTERN =
-  /증후군|염증|파열|탈구|디스크|관절염|건염|힘줄염|인대\s*손상|골절|진단/;
+const DIAGNOSIS_PATTERN = new RegExp(
+  [
+    "증후군|염증|파열|탈구|디스크|골절|질환|협착|측만|추간판|탈출증|신경통|염좌|퇴행성|회전근개|오십견|연골연화",
+    // "~염"으로 끝나는 병명(관절염·건염·족저근막염 등). "염려·염두·염색"은 제외해요.
+    "[가-힣]염(?![려두색])",
+    // 몸 부위 + 손상 (인대 손상, 반월판 손상 등). 그냥 "손상 위험"은 조언이라 막지 않아요.
+    "(?:인대|연골|근육|힘줄|건|반월판|반월상|관절)\\s*손상",
+    // 단정·의심하는 진단 표현. "진단이 아닙니다" 같은 안내 문장은 막지 않아요.
+    "진단(?=\\s*(?:됩|됐|돼|입|이에|이라|받))|의심(?:됩|돼|스럽)",
+  ].join("|"),
+);
+// 영어로 쓴 병명·진단 표현
+const DIAGNOSIS_PATTERN_EN =
+  /\b(?:ACL|MCL|PCL|tendinitis|tendonitis|herniat\w*|sprain|strain|fracture|syndrome|diagnos\w*)\b/i;
+// 분석을 허용하는 운동 3종 (이 밖의 운동은 지원하지 않는 운동으로 안내해요)
+const SUPPORTED_EXERCISE = /스쿼트|데드\s*리프트|벤치\s*프레스|squat|deadlift|bench\s*press/i;
 // 통증·부상을 말하는 표현이 나오면 전문가 상담 경고를 자동으로 붙여요
 const PAIN_PATTERN = /통증|아프|아픔|시큰|저림|부상/;
 
@@ -48,10 +62,17 @@ export function applySafetyRules(raw: Record<string, unknown>): SafetyOutcome {
   }
 
   const exercise = cleanText(raw.exercise, 40) || "운동";
+  // AI가 3종이 아닌 운동(예: 런지)을 "ok"로 답해도 지원하지 않는 운동으로 안내해요
+  if (!SUPPORTED_EXERCISE.test(exercise)) {
+    return {
+      kind: "result",
+      result: { status: "unsupported", message: MESSAGES.unsupported },
+    };
+  }
   const summary = cleanText(raw.summary, 200);
 
   const allText = [exercise, summary, ...feedback.flatMap((f) => [f.point, f.tip])].join(" ");
-  if (DIAGNOSIS_PATTERN.test(allText)) {
+  if (DIAGNOSIS_PATTERN.test(allText) || DIAGNOSIS_PATTERN_EN.test(allText)) {
     return { kind: "blocked", reason: "diagnosis" };
   }
 

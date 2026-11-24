@@ -58,10 +58,13 @@ export async function POST(request: Request) {
     file.type || (file.name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4");
   const video = file.type ? file : new File([file], file.name, { type: typed });
 
-  const outcome = await analyzeVideo(apiKey, video);
-  if (!outcome.ok) {
-    releaseSlot(id); // 서버 오류·시간 초과는 횟수에 세지 않아요
-    return fail(outcome.message, outcome.status, outcome.retryable);
+  // request.signal: 화면이 먼저 연결을 끊으면(예: 시간 초과 안내) 분석도 바로 멈춰요
+  const outcome = await analyzeVideo(apiKey, video, request.signal);
+  if (!outcome.ok || request.signal.aborted) {
+    releaseSlot(id); // 서버 오류·시간 초과·화면이 끊긴 경우는 횟수에 세지 않아요
+    return outcome.ok
+      ? fail(MESSAGES.timeout, 504, true)
+      : fail(outcome.message, outcome.status, outcome.retryable);
   }
 
   const safe = applySafetyRules(outcome.raw);
