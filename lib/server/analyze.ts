@@ -246,6 +246,12 @@ export async function analyzeVideo(
     if (isTimeout(e)) {
       return failure(504, MESSAGES.timeout);
     }
+    // 원인은 서버 로그에 남기고, 키가 섞여 있을 수 있어서 값은 가려요
+    const cause = e instanceof Error ? (e as Error & { cause?: { code?: string } }).cause : undefined;
+    const detail = `${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}${cause?.code ? ` (${cause.code})` : ""}`
+      .split(apiKey)
+      .join("***");
+    console.error("[analyze] 분석 중 예외:", detail);
     return failure(502, "영상을 분석하는 중에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.");
   } finally {
     // 영상은 저장하지 않아요 (PRD 7번): 임시로 올린 파일은 바로 지워요

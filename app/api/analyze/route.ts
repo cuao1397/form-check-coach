@@ -91,7 +91,9 @@ async function analyzeFile(request: Request, apiKey: string, file: File): Promis
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  // 환경 변수 값에 눈에 안 보이는 글자(BOM)나 공백·줄바꿈이 섞여 들어가는 경우가 있어서(복사·붙여넣기, 등록 도구),
+  // 앞뒤를 정리해서 써요. 이런 글자가 있으면 HTTP 헤더로 보낼 수 없어 분석이 통째로 실패해요.
+  const apiKey = process.env.GEMINI_API_KEY?.replace(/^﻿/, "").trim();
   if (!apiKey) {
     // 방문자에게는 내부 설정 이름을 알리지 않고, 원인은 서버 로그에만 남겨요
     console.error("[analyze] GEMINI_API_KEY가 설정되어 있지 않아요. .env를 확인하고 서버를 다시 켜 주세요.");
