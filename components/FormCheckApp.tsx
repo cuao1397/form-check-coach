@@ -89,16 +89,29 @@ export default function FormCheckApp() {
         body,
         signal: controller.signal,
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        const e = data as Partial<ApiError>;
-        setError({
-          message: e.error || "분석에 실패했어요.",
-          retryable: e.retryable ?? false,
-        });
+        // 서버(Vercel 등)가 JSON이 아닌 응답을 보내면 상태 코드로 원인을 알려 줘요
+        const e = (data ?? {}) as Partial<ApiError>;
+        let message = e.error;
+        let retryable = e.retryable;
+        if (!message) {
+          if (res.status === 413) {
+            message = "영상 용량이 서버가 받을 수 있는 한도를 넘었어요. 더 짧거나 작은 영상으로 올려 주세요.";
+            retryable = false;
+          } else if (res.status === 504 || res.status === 502 || res.status === 503) {
+            message = MESSAGES.timeout;
+            retryable = true;
+          } else {
+            message = "분석에 실패했어요. 잠시 후 다시 시도해 주세요.";
+            retryable = true;
+          }
+        }
+        setError({ message, retryable: retryable ?? false });
         setStep({ name: "ready", file, url });
         return;
       }
+      if (!data) throw new Error("empty");
       setStep({ name: "done", result: data as AnalysisResult, url });
     } catch (e) {
       const timedOut = e instanceof DOMException && e.name === "AbortError";

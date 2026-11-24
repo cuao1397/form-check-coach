@@ -76,6 +76,9 @@ export function applySafetyRules(raw: Record<string, unknown>): SafetyOutcome {
     return { kind: "blocked", reason: "diagnosis" };
   }
 
+  const painWarning =
+    raw.painSignal === true || PAIN_PATTERN.test(allText) ? MESSAGES.painWarning : null;
+
   return {
     kind: "result",
     result: {
@@ -83,11 +86,11 @@ export function applySafetyRules(raw: Record<string, unknown>): SafetyOutcome {
       exercise,
       score: Math.min(100, Math.max(0, score)),
       summary,
-      // 자세 "완벽"은 AI가 그렇게 판단하고 점수가 90점 이상일 때만 인정해요
-      excellent: raw.excellent === true && score >= EXCELLENT_MIN_SCORE,
+      // 자세 "완벽"은 AI가 그렇게 판단하고 점수가 90점 이상일 때만 인정해요.
+      // 통증 경고가 함께 있으면 칭찬 화면과 모순되므로 칭찬 화면은 보여 주지 않아요.
+      excellent: raw.excellent === true && score >= EXCELLENT_MIN_SCORE && !painWarning,
       feedback,
-      painWarning:
-        raw.painSignal === true || PAIN_PATTERN.test(allText) ? MESSAGES.painWarning : null,
+      painWarning,
     },
   };
 }
