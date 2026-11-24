@@ -16,6 +16,9 @@ export const MAX_DAILY_ANALYSES = 5;
 // 실패해서 횟수를 돌려받은 시도까지 포함한 하루 AI 호출 상한 (일부러 실패시켜 비용을 쓰는 것을 막아요)
 export const MAX_DAILY_ATTEMPTS = 10;
 
+// 서비스 전체가 하루에 쓸 수 있는 AI 호출 시도 횟수 (여러 사람이 몰리거나 주소를 바꿔 가며 써도 비용·한도를 지켜요)
+export const MAX_GLOBAL_DAILY_ATTEMPTS = 200;
+
 // AI 응답을 기다리는 최대 시간 (밀리초)
 export const CLIENT_TIMEOUT_MS = 60_000;
 // 큰 영상을 Blob에 올리는 최대 시간 (AI 대기 시간과 따로 세요)
@@ -34,6 +37,7 @@ export const MESSAGES = {
   unsupported: "스쿼트, 데드리프트, 벤치프레스 영상만 분석 가능합니다.",
   timeout: "분석 시간이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.",
   dailyLimit: `하루 ${MAX_DAILY_ANALYSES}회까지 분석할 수 있어요. 내일 다시 이용해 주세요.`,
+  globalLimit: "오늘은 이용자가 많아 더 이상 분석할 수 없어요. 내일 다시 이용해 주세요.",
   painWarning:
     "통증 지속 시 운동을 중단하고 전문의/PT 전문가 상담을 권장합니다.",
 };

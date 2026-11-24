@@ -57,8 +57,9 @@ async function analyzeFile(request: Request, apiKey: string, file: File): Promis
 
   // 하루 5회 제한 (AI 사용 비용 보호). AI가 결과를 돌려준 경우만 1회로 세요.
   const id = clientId(request);
-  if (!takeSlot(id)) {
-    return fail(MESSAGES.dailyLimit, 429);
+  const slot = await takeSlot(id);
+  if (slot !== "ok") {
+    return fail(slot === "global-limit" ? MESSAGES.globalLimit : MESSAGES.dailyLimit, 429);
   }
 
   // 같은 영상 형식이라도 브라우저가 형식을 비워 보내면 확장자로 정해 줘요
@@ -69,7 +70,7 @@ async function analyzeFile(request: Request, apiKey: string, file: File): Promis
   // request.signal: 화면이 먼저 연결을 끊으면(예: 시간 초과 안내) 분석도 바로 멈춰요
   const outcome = await analyzeVideo(apiKey, video, request.signal);
   if (!outcome.ok || request.signal.aborted) {
-    releaseSlot(id); // 서버 오류·시간 초과·화면이 끊긴 경우는 횟수에 세지 않아요
+    await releaseSlot(id); // 서버 오류·시간 초과·화면이 끊긴 경우는 횟수에 세지 않아요
     return outcome.ok
       ? fail(MESSAGES.timeout, 504, true)
       : fail(outcome.message, outcome.status, outcome.retryable);
@@ -77,7 +78,7 @@ async function analyzeFile(request: Request, apiKey: string, file: File): Promis
 
   const safe = applySafetyRules(outcome.raw);
   if (safe.kind === "blocked") {
-    releaseSlot(id); // 진단 표현 차단 등으로 결과를 못 보여 준 경우도 세지 않아요
+    await releaseSlot(id); // 진단 표현 차단 등으로 결과를 못 보여 준 경우도 세지 않아요
     return fail(
       safe.reason === "diagnosis"
         ? "분석 결과에 의학적으로 들릴 수 있는 표현이 있어 보여 드리지 않았어요. 다시 시도해 주세요."

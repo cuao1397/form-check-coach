@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         if (!pathname.startsWith(BLOB_UPLOAD_PREFIX) || pathname.includes("..")) {
           throw new Error("허용되지 않은 경로예요.");
         }
-        if (!takeUploadSlot(id)) throw new Error(MESSAGES.dailyLimit);
+        if (!(await takeUploadSlot(id))) throw new Error(MESSAGES.dailyLimit);
         return {
           allowedContentTypes: ["video/mp4", "video/quicktime"],
           maximumSizeInBytes: MAX_VIDEO_BYTES,
